@@ -24,7 +24,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-"""Extract parameters from IPP's tax benefit tables.
+"""Extract parameters from IPP's tax benefit tables. 
 
 Note: Currently this script requires an XLS version of the tables. XLSX file must be converted to XLS before use.
 
@@ -153,7 +153,7 @@ def get_unmerged_cell_coordinates(row_index, column_index, merged_cells_tree):
     return unmerged_cell_coordinates
 
 
-def main(path, date):
+def main(path, date, option = 'all_months', month = 1):
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--dir', default = path + date, help = 'path of IPP XLS directory')
     parser.add_argument('-v', '--verbose', action = 'store_true', default = False, help = "increase output verbosity")
@@ -167,7 +167,6 @@ def main(path, date):
         u'Taxation indirecte': (u'TVA par produit',),
         }
     baremes = [u'Chomage', u'Impot Revenu', u'prelevements sociaux', u'Prestations',u'Taxation indirecte',u'Taxation du capital',u'Taxes locales',u'Marche du travail',]
-#    baremes_TODO = [u'Taxation du capital', u'Impôt Revenu', u'Marché du travail', u'Chômage', u'Retraite', u'Taxes locales', ]
     for bareme in baremes:
         log.info(u'Parsing file {}'.format(bareme))
         xls_path = os.path.join(args.dir.decode('utf-8'), u"Baremes IPP - {0}.xls".format(bareme))
@@ -279,18 +278,23 @@ def main(path, date):
                         for cell in vector
                         ]
                     vector_by_taxipp_name[taxipp_name] = pd.Series(vector, index = dates)
-        months = [
-            datetime.date(year, month, 1)
-            for year in range(1914, 2021)
-            for month in range(1, 13)
-            ]
-        data_frame = pd.DataFrame(index = months)
+        monthstime = [
+                datetime.datetime(year, month, 1,0,0,0)
+                for year in range(1914, 2021)
+                for month in range(1, 13)
+                ]
+        data_frame = pd.DataFrame(index = monthstime)
         for taxipp_name, vector in vector_by_taxipp_name.iteritems():
             data_frame[taxipp_name] = np.nan
             data_frame.loc[vector.index.values, taxipp_name] = vector.values
         data_frame.fillna(method = 'pad', inplace = True)
         data_frame.dropna(axis = 0, how = 'all', inplace = True)
-        data_frame.to_csv(args.dir + bareme + '.csv', encoding = 'utf-8')
+        if option == 'mean_by_year':
+            data_frame = data_frame.resample('AS', how='mean')
+        if option == 'which_month_in_year':
+            data_frame =  data_frame.iloc[data_frame.index.month == month]
+
+        data_frame.to_csv(args.dir  + bareme + '.csv', encoding = 'utf-8')
         print u"Voilà, la table agrégée de {} est créée !".format(bareme)
 
     return 0
@@ -385,5 +389,6 @@ def transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_
 
 
 if __name__ == "__main__":
-    path = 'Directory of Baremes' 
-    sys.exit(main(path, date = "28_04")) # date = quantième et numéro du mois (répertoire des fichiers .xls barèmes)
+    path = 'Directory of Baremes'
+    # Options possibles : 'which_month_in_year', 'mean_by_year', 'all_months' 
+    sys.exit(main(path, date = "28_04", option = 'which_month_in_year', month = 5)) # date = quantième et numéro du mois (répertoire des fichiers .xls barèmes)

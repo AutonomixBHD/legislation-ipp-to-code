@@ -154,21 +154,25 @@ def get_unmerged_cell_coordinates(row_index, column_index, merged_cells_tree):
 
 
 def main():
-    parser = argparse.ArgumentParser(description = __doc__)
-    parser.add_argument('dir', help = 'directory of XLS files')
+    path = u"P:/Legislation/Barèmes IPP/xls_to_csv 28_04/"
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--dir', default = path, help = 'path of IPP XLS directory')
     parser.add_argument('-v', '--verbose', action = 'store_true', default = False, help = "increase output verbosity")
     args = parser.parse_args()
+    #args.dir = path
     logging.basicConfig(level = logging.DEBUG if args.verbose else logging.WARNING, stream = sys.stdout)
 
     forbiden_sheets = {
         u'Impot Revenu': (u'Barème IGR',),
         u'prelevements sociaux': (u'Abréviations', u'ASSIETTE PU', u'AUBRYI',  u'AUBRYII'),
+        u'Taxation indirecte': (u'TVA par produit',),
         }
-    baremes = [u'Chomage', u'Impot Revenu', u'prelevements sociaux', u'Prestations']
-#    baremes_TODO = [u'Taxation du capital', u'Impôt Revenu', u'Marché du travail', u'Chômage', u'Retraite', u'Taxes locales', u'Taxes indirectes']
+    baremes = [u'Chomage', u'Impot Revenu', u'prelevements sociaux', u'Prestations',u'Taxation indirecte',u'Taxation du capital',u'Taxes locales',u'Marche du travail',]
+#    baremes_TODO = [u'Taxation du capital', u'Impôt Revenu', u'Marché du travail', u'Chômage', u'Retraite', u'Taxes locales', ]
     for bareme in baremes:
         log.info(u'Parsing file {}'.format(bareme))
         xls_path = os.path.join(args.dir.decode('utf-8'), u"Baremes IPP - {0}.xls".format(bareme))
+#       xls_path = os.path.join(path, u"Baremes IPP - {0}.xls".format(bareme))
         book = xlrd.open_workbook(filename = xls_path, formatting_info = True)
         sheet_names = [
             sheet_name
@@ -205,7 +209,6 @@ def main():
                             transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
                             for column_index in range(ncols)
                             )
-                        if strings.slugify(taxipp_name) not in ('date', 'date_ir', 'date_rev', 'note', 'ref-leg')
                         ]
                     state = 'labels'
                     continue
@@ -267,7 +270,7 @@ def main():
                 for row in values_rows
                 ]
             for column_index, taxipp_name in enumerate(taxipp_names_row):
-                if taxipp_name:
+                if taxipp_name and strings.slugify(taxipp_name) not in ('date', 'date-ir', 'date-rev', 'note', 'ref-leg', 'notes') :
                     vector = [
                         transform_cell_value(date, row[column_index])
                         for date, row in zip(dates, values_rows)

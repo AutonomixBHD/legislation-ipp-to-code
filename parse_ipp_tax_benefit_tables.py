@@ -153,10 +153,9 @@ def get_unmerged_cell_coordinates(row_index, column_index, merged_cells_tree):
     return unmerged_cell_coordinates
 
 
-def main():
-    path = u"P:/Legislation/Barèmes IPP/xls_to_csv 28_04/"
+def main(path, date):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--dir', default = path, help = 'path of IPP XLS directory')
+    parser.add_argument('-d', '--dir', default = path + date, help = 'path of IPP XLS directory')
     parser.add_argument('-v', '--verbose', action = 'store_true', default = False, help = "increase output verbosity")
     args = parser.parse_args()
     #args.dir = path
@@ -291,7 +290,7 @@ def main():
             data_frame.loc[vector.index.values, taxipp_name] = vector.values
         data_frame.fillna(method = 'pad', inplace = True)
         data_frame.dropna(axis = 0, how = 'all', inplace = True)
-        data_frame.to_csv(bareme + '.csv', encoding = 'utf-8')
+        data_frame.to_csv(args.dir + bareme + '.csv', encoding = 'utf-8')
         print u"Voilà, la table agrégée de {} est créée !".format(bareme)
 
     return 0
@@ -386,4 +385,5 @@ def transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    path = 'Directory of Baremes' 
+    sys.exit(main(path, date = "28_04")) # date = quantième et numéro du mois (répertoire des fichiers .xls barèmes)

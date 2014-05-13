@@ -166,7 +166,7 @@ def main(path, date, option = 'all_months', month = 1):
         u'prelevements sociaux': (u'Abréviations', u'ASSIETTE PU', u'AUBRYI',  u'AUBRYII'),
         u'Taxation indirecte': (u'TVA par produit',),
         }
-    baremes = [u'Chomage', u'Impot Revenu', u'prelevements sociaux', u'Prestations',u'Taxation indirecte',u'Taxation du capital',u'Taxes locales',u'Marche du travail',]
+    baremes = [u'Prestations', u'Chomage', u'Impot Revenu', u'prelevements sociaux', u'Taxation indirecte', u'Taxation du capital', u'Taxes locales', u'Marche du travail']
     for bareme in baremes:
         log.info(u'Parsing file {}'.format(bareme))
         xls_path = os.path.join(args.dir.decode('utf-8'), u"Baremes IPP - {0}.xls".format(bareme))
@@ -274,27 +274,29 @@ def main(path, date, option = 'all_months', month = 1):
                         for date, row in zip(dates, values_rows)
                         ]
                     vector = [
-                        cell if not isinstance(cell, basestring) else np.nan
+                        cell if not isinstance(cell, basestring) or cell == u'nc' else '-'
                         for cell in vector
                         ]
                     vector_by_taxipp_name[taxipp_name] = pd.Series(vector, index = dates)
         monthstime = [
-                datetime.datetime(year, month, 1,0,0,0)
-                for year in range(1914, 2021)
-                for month in range(1, 13)
+                datetime.datetime(y, m, 1,0,0,0)
+                for y in range(1914, 2021)
+                for m in range(1, 13)
                 ]
         data_frame = pd.DataFrame(index = monthstime)
         for taxipp_name, vector in vector_by_taxipp_name.iteritems():
             data_frame[taxipp_name] = np.nan
             data_frame.loc[vector.index.values, taxipp_name] = vector.values
+        data_frame.replace(u'nc', np.nan, inplace=True)
         data_frame.fillna(method = 'pad', inplace = True)
         data_frame.dropna(axis = 0, how = 'all', inplace = True)
         if option == 'mean_by_year':
+            data_frame.replace('-', 0, inplace=True)
             data_frame = data_frame.resample('AS', how='mean')
         if option == 'which_month_in_year':
+            print month
             data_frame =  data_frame.iloc[data_frame.index.month == month]
-
-        data_frame.to_csv(args.dir  + bareme + '.csv', encoding = 'utf-8')
+        data_frame.to_csv(args.dir + "/"  + bareme + '.csv', encoding = 'utf-8')
         print u"Voilà, la table agrégée de {} est créée !".format(bareme)
 
     return 0
@@ -391,4 +393,4 @@ def transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_
 if __name__ == "__main__":
     path = 'Directory of Baremes'
     # Options possibles : 'which_month_in_year', 'mean_by_year', 'all_months' 
-    sys.exit(main(path, date = "28_04", option = 'which_month_in_year', month = 5)) # date = quantième et numéro du mois (répertoire des fichiers .xls barèmes)
+    sys.exit(main(path, date="28_04", option='mean_by_year', month=5)) # date = quantième et numéro du mois (répertoire des fichiers .xls barèmes)

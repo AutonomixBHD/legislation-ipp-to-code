@@ -24,7 +24,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-"""Extract parameters from IPP's tax benefit tables. 
+"""Extract parameters from IPP's tax benefit tables.
 
 Note: Currently this script requires an XLS version of the tables. XLSX file must be converted to XLS before use.
 
@@ -391,5 +391,5 @@ def transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_
 
 if __name__ == "__main__":
     path = 'Directory of Baremes'
-    # Options possibles : 'which_month_in_year', 'mean_by_year', 'all_months' 
+    # Options possibles : 'which_month_in_year', 'mean_by_year', 'all_months'
     sys.exit(main(path, date="28_04", option='mean_by_year', month=5)) # date = quantième et numéro du mois (répertoire des fichiers .xls barèmes)

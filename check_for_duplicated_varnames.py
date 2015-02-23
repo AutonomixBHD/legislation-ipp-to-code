@@ -53,13 +53,13 @@ def clean_sheet(xls_file, sheet_name):
     for col in sheet.columns.values:
         if col[0:7] == 'Unnamed':
             sheet = sheet.drop([col], 1)
-            
+
     # Pour l'instant on drop également tous les ref_leg, jorf et notes
-    for var_to_drop in ['ref_leg', 'jorf', 'Notes', 'notes', 'date_ir'] : 
+    for var_to_drop in ['ref_leg', 'jorf', 'Notes', 'notes', 'date_ir'] :
         if var_to_drop in sheet.columns.values:
             sheet = sheet.drop(var_to_drop, axis = 1)
 
-    
+
     # Pour impôt sur le revenu, il y a date_IR et date_rev : on utilise date_rev, que l'on renome date pour plus de cohérence
     if 'date_rev' in sheet.columns.values:
             sheet = sheet.rename(columns={'date_rev':u'date'})
@@ -67,7 +67,7 @@ def clean_sheet(xls_file, sheet_name):
     # Conserver les bonnes lignes : on drop s'il y a du texte ou du NaN dans la colonne des dates
     def is_var_nan(row,col):
         return isinstance(sheet.iloc[row, col], float) and math.isnan(sheet.iloc[row, col])
-    
+
     sheet['date_absente'] = False
     for i in range(0,sheet.shape[0]):
         sheet.loc[i,['date_absente']] = isinstance(sheet.iat[i,0], basestring) or is_var_nan(i,0)
@@ -129,9 +129,9 @@ if __name__ == '__main__':
     for bareme in baremes :
         xls_path = os.path.join(args.dir, u"Barèmes IPP - {0}.xlsx".format(bareme))
         xls_file = pd.ExcelFile(xls_path)
-        
+
         # Retrait des onglets qu'on ne souhaite pas importer
-        sheets_to_remove = (u'Sommaire', u'Outline') 
+        sheets_to_remove = (u'Sommaire', u'Outline')
         if bareme in forbiden_sheets.keys():
             sheets_to_remove += forbiden_sheets[bareme]
 
@@ -139,10 +139,9 @@ if __name__ == '__main__':
             sheet_name
             for sheet_name in xls_file.sheet_names
             if not sheet_name.startswith(sheets_to_remove)
-            ] 
-        
+            ]
+
         # Test si deux variables ont le même nom
         test_duplicate = dic_of_same_variable_names(xls_file, sheet_names)
         assert not test_duplicate, u'Au moins deux variables ont le même nom dans le classeur {} : u{}'.format(
             bareme,test_duplicate)
-

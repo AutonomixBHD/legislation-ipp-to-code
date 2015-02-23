@@ -32,7 +32,8 @@ nosetests.xml
 # Translations
 *.mo
 
-# Mr Developer
+# Settings
 .mr.developer.cfg
 .project
 .pydevproject
+.settings

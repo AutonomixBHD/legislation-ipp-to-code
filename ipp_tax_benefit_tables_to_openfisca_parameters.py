@@ -64,9 +64,11 @@ conv = custom_conv(baseconv, datetimeconv, states)
 forbiden_sheets = {
     # u'Impot Revenu': (u'Barème IGR',),
     u'prelevements sociaux': (
-        # u'ASSIETTE PU',
+        u'ASSIETTE PU',
         u'AUBRYI',
         # u'AUBRYII',
+        u'CNRACL',
+        u'FILLON',
         ),
     # u'Taxation indirecte': (u'TVA par produit',),
     }
@@ -108,7 +110,38 @@ cell_to_date = conv.condition(
     )
 
 
-currency_converter = conv.first_match(
+# currency_converter = conv.first_match(
+#     conv.pipe(
+#         conv.test_isinstance(basestring),
+#         conv.cleanup_line,
+#         conv.test_none(),
+#         ),
+#     conv.pipe(
+#         conv.test_isinstance(tuple),
+#         conv.test(lambda couple: len(couple) == 2, error = N_(u"Invalid couple length")),
+#         conv.struct(
+#             (
+#                 conv.pipe(
+#                     conv.test_isinstance((float, int)),
+#                     conv.not_none,
+#                     ),
+#                 conv.pipe(
+#                     conv.test_isinstance(basestring),
+#                     conv.test_in([
+#                         u'%',
+#                         u'EUR',
+#                         u'FRF',
+#                         ]),
+#                     ),
+#                 ),
+#             ),
+#         ),
+#     )
+
+
+currency_or_number_converter = conv.first_match(
+    conv.test_isinstance(float),
+    conv.test_isinstance(int),
     conv.pipe(
         conv.test_isinstance(basestring),
         conv.cleanup_line,
@@ -149,16 +182,27 @@ def rename_keys(new_key_by_old_key):
     return rename_keys_converter
 
 
-row_converter_by_sheet_name = {
-    u"PSS": conv.struct(
+values_row_converter = conv.pipe(
+    rename_keys({
+        u"Date d'effet": u"Date d'entrée en vigueur",
+        u"Note": u"Notes",
+        u"Publication au JO": u"Parution au JO",
+        u"Publication  JO": u"Parution au JO",
+        u"Publication JO": u"Parution au JO",
+        u"Référence": u"Références législatives",
+        u"Référence législative": u"Références législatives",
+        u"Références législatives                  (taux d'appel)": u"Références législatives",
+        u"Références législatives                  (taux de cotisation)": u"Références législatives",
+        u"Références législatives ou BOI": u"Références législatives",
+        u"Remarques": u"Notes",
+        }),
+    conv.struct(
         collections.OrderedDict((
             (u"Date d'entrée en vigueur", conv.pipe(
                 conv.test_isinstance(basestring),
                 conv.iso8601_input_to_date,
                 conv.not_none,
                 )),
-            (u"Plafond de la Sécurité sociale (mensuel)", currency_converter),
-            (u"Plafond de la Sécurité sociale (annuel)", currency_converter),
             (u"Références législatives", conv.pipe(
                 conv.test_isinstance(basestring),
                 conv.cleanup_line,
@@ -178,46 +222,9 @@ row_converter_by_sheet_name = {
                 conv.test_none(),
                 )),
             )),
+        default = currency_or_number_converter,
         ),
-    u"CSG-1": conv.pipe(
-        rename_keys({
-            u"Publication au JO": u"Parution au JO",
-            }),
-        conv.struct(
-            collections.OrderedDict((
-                (u"Date d'entrée en vigueur", conv.pipe(
-                    conv.test_isinstance(basestring),
-                    conv.iso8601_input_to_date,
-                    conv.not_none,
-                    )),
-                ((u"Revenus d'activité", u"Taux global CSG"), currency_converter),
-                ((u"Revenus d'activité", u"Taux CSG deductible"), currency_converter),
-                ((u"Allocations chômage", u"Taux global CSG"), currency_converter),
-                ((u"Allocations chômage", u"Taux CSG deductible"), currency_converter),
-                ((u"Abattement", u"Sous 4PSS"), currency_converter),
-                ((u"Abattement", u"Au-dessus de 4 PSS"), currency_converter),
-                (u"Références législatives", conv.pipe(
-                    conv.test_isinstance(basestring),
-                    conv.cleanup_line,
-                    )),
-                (u"Parution au JO", conv.pipe(
-                    conv.test_isinstance(basestring),
-                    conv.iso8601_input_to_date,
-                    conv.date_to_iso8601_str,
-                    )),
-                (u"Notes", conv.pipe(
-                    conv.test_isinstance(basestring),
-                    conv.cleanup_line,
-                    )),
-                (None, conv.pipe(
-                    conv.test_isinstance(basestring),
-                    conv.cleanup_line,
-                    conv.test_none(),
-                    )),
-                )),
-            ),
-        ),
-    }
+    )
 
 
 def escape_xml(value):
@@ -405,6 +412,8 @@ def main():
             labels = []
             for labels_row in labels_rows:
                 for column_index, label in enumerate(labels_row):
+                    if not label:
+                        continue
                     while column_index >= len(labels):
                         labels.append([])
                     labels_column = labels[column_index]
@@ -415,14 +424,10 @@ def main():
                 for labels_column1 in labels
                 ]
 
-            row_converter = row_converter_by_sheet_name.get(sheet_name)
-            if row_converter is None:
-                log.warning(u"Missing row converters for sheet {}".format(sheet_name))
-                continue
             cell_by_label_rows = []
             for value_row in values_rows:
                 cell_by_label = collections.OrderedDict(itertools.izip(labels, value_row))
-                cell_by_label, errors = row_converter(cell_by_label, state = conv.default_state)
+                cell_by_label, errors = values_row_converter(cell_by_label, state = conv.default_state)
                 assert errors is None, "Errors in {}:\n{}".format(cell_by_label, errors)
                 cell_by_label_rows.append(cell_by_label)
 
@@ -447,16 +452,15 @@ def main():
                 sheet_node['children'].append(variable_node)
 
                 for cell_by_label in cell_by_label_rows:
-                    amount_and_unit = cell_by_label[labels[-1]]
+                    amount_and_unit = cell_by_label[labels_column]
                     variable_node['children'].append(dict(
                         law_reference = cell_by_label[u'Références législatives'],
                         notes = cell_by_label[u'Notes'],
                         publication_date = cell_by_label[u"Parution au JO"],
                         start_date = cell_by_label[u"Date d'entrée en vigueur"],
                         type = u'VALUE',
-                        unit = amount_and_unit[1] if amount_and_unit is not None else None,
-                        value = amount_and_unit[0] if amount_and_unit is not None else None,
-                        # TODO? = cell_by_label[u'Plafond de la Sécurité sociale (annuel)'],
+                        unit = amount_and_unit[1] if isinstance(amount_and_unit, tuple) else None,
+                        value = amount_and_unit[0] if isinstance(amount_and_unit, tuple) else amount_and_unit,
                         ))
 
             # dates = [

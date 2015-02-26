@@ -126,6 +126,7 @@ currency_converter = conv.first_match(
                 conv.pipe(
                     conv.test_isinstance(basestring),
                     conv.test_in([
+                        u'%',
                         u'EUR',
                         u'FRF',
                         ]),
@@ -136,34 +137,86 @@ currency_converter = conv.first_match(
     )
 
 
-row_converters_by_sheet_name = {
-    u'PSS': collections.OrderedDict((
-        (u"Date d'entrée en vigueur", conv.pipe(
-            conv.test_isinstance(basestring),
-            conv.iso8601_input_to_date,
-            conv.not_none,
+def rename_keys(new_key_by_old_key):
+    def rename_keys_converter(value, state = None):
+        if value is None:
+            return value, None
+        renamed_value = value.__class__()
+        for item_key, item_value in value.iteritems():
+            renamed_value[new_key_by_old_key.get(item_key, item_key)] = item_value
+        return renamed_value, None
+
+    return rename_keys_converter
+
+
+row_converter_by_sheet_name = {
+    u"PSS": conv.struct(
+        collections.OrderedDict((
+            (u"Date d'entrée en vigueur", conv.pipe(
+                conv.test_isinstance(basestring),
+                conv.iso8601_input_to_date,
+                conv.not_none,
+                )),
+            (u"Plafond de la Sécurité sociale (mensuel)", currency_converter),
+            (u"Plafond de la Sécurité sociale (annuel)", currency_converter),
+            (u"Références législatives", conv.pipe(
+                conv.test_isinstance(basestring),
+                conv.cleanup_line,
+                )),
+            (u"Parution au JO", conv.pipe(
+                conv.test_isinstance(basestring),
+                conv.iso8601_input_to_date,
+                conv.date_to_iso8601_str,
+                )),
+            (u"Notes", conv.pipe(
+                conv.test_isinstance(basestring),
+                conv.cleanup_line,
+                )),
+            (None, conv.pipe(
+                conv.test_isinstance(basestring),
+                conv.cleanup_line,
+                conv.test_none(),
+                )),
             )),
-        (u'Plafond de la Sécurité sociale (mensuel)', currency_converter),
-        (u'Plafond de la Sécurité sociale (annuel)', currency_converter),
-        (u'Références législatives', conv.pipe(
-            conv.test_isinstance(basestring),
-            conv.cleanup_line,
-            )),
-        (u'Parution au JO', conv.pipe(
-            conv.test_isinstance(basestring),
-            conv.iso8601_input_to_date,
-            conv.date_to_iso8601_str,
-            )),
-        (u'Notes', conv.pipe(
-            conv.test_isinstance(basestring),
-            conv.cleanup_line,
-            )),
-        (None, conv.pipe(
-            conv.test_isinstance(basestring),
-            conv.cleanup_line,
-            conv.test_none(),
-            )),
-        )),
+        ),
+    u"CSG-1": conv.pipe(
+        rename_keys({
+            u"Publication au JO": u"Parution au JO",
+            }),
+        conv.struct(
+            collections.OrderedDict((
+                (u"Date d'entrée en vigueur", conv.pipe(
+                    conv.test_isinstance(basestring),
+                    conv.iso8601_input_to_date,
+                    conv.not_none,
+                    )),
+                ((u"Revenus d'activité", u"Taux global CSG"), currency_converter),
+                ((u"Revenus d'activité", u"Taux CSG deductible"), currency_converter),
+                ((u"Allocations chômage", u"Taux global CSG"), currency_converter),
+                ((u"Allocations chômage", u"Taux CSG deductible"), currency_converter),
+                ((u"Abattement", u"Sous 4PSS"), currency_converter),
+                ((u"Abattement", u"Au-dessus de 4 PSS"), currency_converter),
+                (u"Références législatives", conv.pipe(
+                    conv.test_isinstance(basestring),
+                    conv.cleanup_line,
+                    )),
+                (u"Parution au JO", conv.pipe(
+                    conv.test_isinstance(basestring),
+                    conv.iso8601_input_to_date,
+                    conv.date_to_iso8601_str,
+                    )),
+                (u"Notes", conv.pipe(
+                    conv.test_isinstance(basestring),
+                    conv.cleanup_line,
+                    )),
+                (None, conv.pipe(
+                    conv.test_isinstance(basestring),
+                    conv.cleanup_line,
+                    conv.test_none(),
+                    )),
+                )),
+            ),
+        ),
     }
 
 
@@ -349,6 +402,30 @@ def main():
             if sheet_title is None:
                 log.warning(u"Missing title for sheet {} in summary".format(sheet_name))
                 continue
+            labels = []
+            for labels_row in labels_rows:
+                for column_index, label in enumerate(labels_row):
+                    while column_index >= len(labels):
+                        labels.append([])
+                    labels_column = labels[column_index]
+                    if not labels_column or labels_column[-1] != label:
+                        labels_column.append(label)
+            labels = [
+                tuple(labels_column1) if len(labels_column1) > 1 else labels_column1[0]
+                for labels_column1 in labels
+                ]
+
+            row_converter = row_converter_by_sheet_name.get(sheet_name)
+            if row_converter is None:
+                log.warning(u"Missing row converters for sheet {}".format(sheet_name))
+                continue
+            cell_by_label_rows = []
+            for value_row in values_rows:
+                cell_by_label = collections.OrderedDict(itertools.izip(labels, value_row))
+                cell_by_label, errors = row_converter(cell_by_label, state = conv.default_state)
+                assert errors is None, "Errors in {}:\n{}".format(cell_by_label, errors)
+                cell_by_label_rows.append(cell_by_label)
+
             sheet_node = dict(
                 children = [],
                 name = strings.slugify(sheet_name, separator = u'_'),
@@ -358,31 +435,13 @@ def main():
                 )
             root_node['children'].append(sheet_node)
 
-            row_converters = row_converters_by_sheet_name.get(sheet_name)
-            if row_converters is None:
-                log.warning(u"Missing row converters for sheet {}".format(sheet_name))
-                continue
-            cell_by_label_rows = []
-            for value_row in values_rows:
-                cell_by_label = collections.OrderedDict(itertools.izip(labels_rows[-1], value_row))
-                cell_by_label, errors = conv.struct(row_converters)(cell_by_label, state = conv.default_state)
-                assert errors is None, "Errors in {}:\n{}".format(cell_by_label, errors)
-                cell_by_label_rows.append(cell_by_label)
-
-            labels_by_taxipp_name = {
-                taxipp_name: [
-                    labels_row[column_index]
-                    for labels_row in labels_rows
-                    ]
-                for column_index, taxipp_name in enumerate(taxipp_names_row)
-                if taxipp_name and taxipp_name not in (u'date')
-                }
-
-            for taxipp_name, labels in labels_by_taxipp_name.iteritems():
+            for taxipp_name, labels_column in zip(taxipp_names_row, labels):
+                if not taxipp_name or taxipp_name in (u'date',):
+                    continue
                 variable_node = dict(
                     children = [],
                     name = strings.slugify(taxipp_name, separator = u'_'),
-                    title = u' - '.join(labels),
+                    title = u' - '.join(labels_column) if isinstance(labels_column, tuple) else labels_column,
                     type = u'CODE',
                     )
                 sheet_node['children'].append(variable_node)

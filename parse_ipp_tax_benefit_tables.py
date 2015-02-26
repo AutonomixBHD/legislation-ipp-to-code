@@ -42,8 +42,8 @@ import os
 import re
 import sys
 
-from biryani1 import baseconv, custom_conv, datetimeconv, states
-from biryani1 import strings
+from biryani import baseconv, custom_conv, datetimeconv, states
+from biryani import strings
 import numpy as np
 import pandas as pd
 import xlrd
@@ -158,7 +158,7 @@ def main(path, date, option = 'all_months', month = 1):
     parser.add_argument('-d', '--dir', default = path + date, help = 'path of IPP XLS directory')
     parser.add_argument('-v', '--verbose', action = 'store_true', default = False, help = "increase output verbosity")
     args = parser.parse_args()
-    #args.dir = path
+    # args.dir = path
     logging.basicConfig(level = logging.DEBUG if args.verbose else logging.WARNING, stream = sys.stdout)
 
     forbiden_sheets = {
@@ -170,7 +170,7 @@ def main(path, date, option = 'all_months', month = 1):
     for bareme in baremes:
         log.info(u'Parsing file {}'.format(bareme))
         xls_path = os.path.join(args.dir.decode('utf-8'), u"Baremes IPP - {0}.xls".format(bareme))
-#       xls_path = os.path.join(path, u"Baremes IPP - {0}.xls".format(bareme))
+        # xls_path = os.path.join(path, u"Baremes IPP - {0}.xls".format(bareme))
         book = xlrd.open_workbook(filename = xls_path, formatting_info = True)
         sheet_names = [
             sheet_name

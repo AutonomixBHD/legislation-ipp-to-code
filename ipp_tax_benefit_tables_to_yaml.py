@@ -154,9 +154,10 @@ def main():
         sheet_names = [
             sheet_name
             for sheet_name in book.sheet_names()
-            if not sheet_name.startswith((u'Abréviations', u'Outline'))
+            if not sheet_name.startswith((u'Abréviations',))
             ]
-        sheet_title_by_name = {}
+        sheet_english_title_by_name = UnsortableOrderedDict()
+        sheet_title_by_name = UnsortableOrderedDict()
         for sheet_name in sheet_names:
             log.info(u'  Parsing sheet {}'.format(sheet_name))
             sheet = book.sheet_by_name(sheet_name)
@@ -171,17 +172,89 @@ def main():
                         for column_index in range(column_low, column_high):
                             cell_coordinates_by_merged_column_index[column_index] = (row_low, column_low)
 
-                if sheet_name.startswith(u'Sommaire'):
+                if sheet_name.startswith((u'Sommaire', u'Outline')):
                     # Associate the titles of the sheets to their Excel names.
-                    for row_index in range(sheet.nrows):
-                        linked_sheet_number = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, 2)
-                        if isinstance(linked_sheet_number, int):
-                            linked_sheet_title = transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, 3)
-                            if linked_sheet_title is not None:
-                                hyperlink = get_hyperlink(sheet, row_index, 3)
-                                if hyperlink is not None and hyperlink.type == u'workbook':
-                                    linked_sheet_name = hyperlink.textmark.split(u'!', 1)[0].strip(u'"').strip(u"'")
-                                    sheet_title_by_name[linked_sheet_name] = linked_sheet_title
+                    book_title = transform_xls_cell_to_str(book, sheet, merged_cells_tree, 1, 1)
+                    if not book_title:
+                        book_title = transform_xls_cell_to_str(book, sheet, merged_cells_tree, 2, 1)
+                    book_title = book_title.strip()
+                    assert book_title
+                    book_description = transform_xls_cell_to_str(book, sheet, merged_cells_tree, 4, 1)
+                    if not book_description:
+                        book_description = transform_xls_cell_to_str(book, sheet, merged_cells_tree, 5, 1)
+                    book_description = book_description.strip()
+                    assert book_description
+
+                    for column_index in range(1, 4):
+                        current_heading = u'Annexes' if sheet_name.startswith(u'Sommaire') else u'Annexes'
+                        sheet_title_by_slug_by_heading = UnsortableOrderedDict()
+                        for row_index in range(sheet.nrows):
+                            heading = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, 1)
+                            if isinstance(heading, basestring):
+                                heading = heading.strip()
+                                if not heading:
+                                    continue
+                                if heading == book_title or heading == book_description:
+                                    continue
+                                current_heading = heading
+                                continue
+                            linked_sheet_number = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index,
+                                column_index)
+                            if isinstance(linked_sheet_number, int):
+                                linked_sheet_title = transform_xls_cell_to_str(book, sheet, merged_cells_tree,
+                                    row_index, column_index + 1)
+                                if linked_sheet_title is not None:
+                                    hyperlink = get_hyperlink(sheet, row_index, column_index + 1)
+                                    if hyperlink is not None and hyperlink.type == u'workbook':
+                                        linked_sheet_name = hyperlink.textmark.split(u'!', 1)[0].strip(u'"').strip(u"'")
+                                        sheet_title_by_slug = sheet_title_by_slug_by_heading.setdefault(current_heading,
+                                            UnsortableOrderedDict())
+                                        sheet_title_by_slug[strings.slugify(linked_sheet_name)] = linked_sheet_title
+
+                                        if sheet_name.startswith(u'Sommaire'):
+                                            sheet_english_title_by_name[linked_sheet_name] = linked_sheet_title
+                                        else:
+                                            sheet_title_by_name[linked_sheet_name] = linked_sheet_title
+                        if sheet_title_by_slug_by_heading:
+                            break
+                    assert sheet_title_by_slug_by_heading
+
+                    book_notes = []
+                    for column_index in range(8, 12):
+                        for row_index in range(sheet.nrows):
+                            note = transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
+                            if note == book_description:
+                                continue
+                            if book_notes or note:
+                                book_notes.append(note or u'')
+                                if note:
+                                    blank_notes_count = 0
+                                elif blank_notes_count >= 1:
+                                    break
+                                else:
+                                    blank_notes_count += 1
+                        if book_notes:
+                            break
+                    while book_notes and not book_notes[-1]:
+                        del book_notes[-1]
+                    assert book_notes
+
+                    sheet_node = UnsortableOrderedDict((
+                        (u'Titre', book_title),
+                        (u'Description', book_description),
+                        (u'Sommaire', sheet_title_by_slug_by_heading),
+                        (u'Notes', literal_unicode(u'\n'.join(book_notes))),
+                        (u'Licence',
+                            u'Licence ouverte / Open Licence <http://www.etalab.gouv.fr/licence-ouverte-open-licence>'),
+                        ))
+
+                    with open(os.path.join(
+                            book_yaml_dir,
+                            strings.slugify(sheet_name, transform = strings.upper) + '.yaml',
+                            ), 'w') as yaml_file:
+                        yaml.dump(sheet_node, yaml_file, allow_unicode = True, default_flow_style = False, indent = 2,
+                            width = 120)
+
                     continue
 
                 descriptions_rows = []

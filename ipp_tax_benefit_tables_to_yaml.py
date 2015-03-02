@@ -417,7 +417,7 @@ def main():
                     for row in notes_rows
                     ]
                 if notes_lines:
-                    sheet_node[u'Notes'] = literal_unicode(u'\n'.join(notes_lines))
+                    sheet_node[u'Notes'] = literal_unicode(u'\n'.join(notes_lines).rstrip())
 
                 descriptions_lines = [
                     u' | '.join(
@@ -427,7 +427,7 @@ def main():
                     for row in descriptions_rows
                     ]
                 if descriptions_lines:
-                    sheet_node[u'Description'] = literal_unicode(u'\n'.join(descriptions_lines))
+                    sheet_node[u'Description'] = literal_unicode(u'\n'.join(descriptions_lines).rstrip())
 
                 with open(os.path.join(book_yaml_dir, strings.slugify(sheet_name) + '.yaml'), 'w') as yaml_file:
                     yaml.dump(sheet_node, yaml_file, allow_unicode = True, default_flow_style = False, indent = 2,

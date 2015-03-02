@@ -173,6 +173,7 @@ def main():
                             cell_coordinates_by_merged_column_index[column_index] = (row_low, column_low)
 
                 if sheet_name.startswith((u'Sommaire', u'Outline')):
+                    french = sheet_name.startswith(u'Sommaire')
                     # Associate the titles of the sheets to their Excel names.
                     book_title = transform_xls_cell_to_str(book, sheet, merged_cells_tree, 1, 1)
                     if not book_title:
@@ -186,7 +187,7 @@ def main():
                     assert book_description
 
                     for column_index in range(1, 4):
-                        current_heading = u'Annexes' if sheet_name.startswith(u'Sommaire') else u'Annexes'
+                        current_heading = u'Annexes' if french else u'Annexes'
                         sheet_title_by_slug_by_heading = UnsortableOrderedDict()
                         for row_index in range(sheet.nrows):
                             heading = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, 1)
@@ -213,10 +214,10 @@ def main():
                                             UnsortableOrderedDict())
                                         sheet_title_by_slug[strings.slugify(linked_sheet_name)] = linked_sheet_title
 
-                                        if sheet_name.startswith(u'Sommaire'):
-                                            sheet_english_title_by_name[linked_sheet_name] = linked_sheet_title
-                                        else:
+                                        if french:
                                             sheet_title_by_name[linked_sheet_name] = linked_sheet_title
+                                        else:
+                                            sheet_english_title_by_name[linked_sheet_name] = linked_sheet_title
                         if sheet_title_by_slug_by_heading:
                             break
                     assert sheet_title_by_slug_by_heading
@@ -242,12 +243,26 @@ def main():
                     assert book_notes
 
                     sheet_node = UnsortableOrderedDict((
-                        (u'Titre', book_title),
-                        (u'Description', book_description),
-                        (u'Sommaire', sheet_title_by_slug_by_heading),
-                        (u'Notes', literal_unicode(u'\n'.join(book_notes))),
-                        (u'Licence',
-                            u'Licence ouverte / Open Licence <http://www.etalab.gouv.fr/licence-ouverte-open-licence>'),
+                        (u'Titre' if french else u'Title', book_title),
+                        (u'Description' if french else u'Description', book_description),
+                        (u'Sommaire' if french else u'Table of Content', sheet_title_by_slug_by_heading),
+                        (u'Notes' if french else u'Notes', literal_unicode(u'\n'.join(book_notes))),
+                        (u'Données initiales' if french else u'Source Data', UnsortableOrderedDict((
+                            (u'Producteur' if french else u'Producer', u'Institut des politiques publiques'),
+                            (u'Format', u'XLS'),
+                            (u'URL', u'http://www.ipp.eu/outils/baremes-ipp/' if french
+                                else u'http://www.ipp.eu/en/tools/ipp-tax-and-benefit-tables/'),
+                            ))),
+                        (u'Convertisseur' if french else u'Converter', UnsortableOrderedDict((
+                            (u'URL', u'https://github.com/low-tech-data/ipp-tax-benefit-tables-converters'),
+                            ))),
+                        (u'Données générées' if french else u'Generated Data', UnsortableOrderedDict((
+                            (u'Format', u'YAML'),
+                            (u'URL', u'https://github.com/low-tech-data/ipp-tax-benefit-tables-yaml'),
+                            ))),
+                        (u'Licence' if french else u'License',
+                            u'Licence ouverte <http://www.etalab.gouv.fr/licence-ouverte-open-licence>' if french
+                            else u'Open Licence <http://www.etalab.gouv.fr/licence-ouverte-open-licence>'),
                         ))
 
                     with open(os.path.join(
@@ -269,19 +284,29 @@ def main():
                     columns_count = len(sheet.row_values(row_index))
                     if state == 'taxipp_names':
                         taxipp_names_row = [
-                            taxipp_stripped
-                            for taxipp_stripped in (
-                                taxipp_name.strip()
-                                for taxipp_name in (
-                                    transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
-                                    for column_index in range(columns_count)
-                                    )
-                                if taxipp_name is not None
+                            (taxipp_name or u'').strip()
+                            for taxipp_name in (
+                                transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
+                                for column_index in range(columns_count)
                                 )
-                            if taxipp_stripped
                             ]
                         state = 'labels'
-                        continue
+                        if all(
+                                not taxipp_name
+                                for taxipp_name in taxipp_names_row
+                                ):
+                            # The first row is empty => This sheet doesn't contain TaxIPP names.
+                            continue
+                        # When any TaxIPP name is in lowercase, assume that this row is really the TaxIPP names row.
+                        if any(
+                                taxipp_name and taxipp_name[0].islower()
+                                for taxipp_name in taxipp_names_row
+                                ):
+                            continue
+                        else:
+                            log.info(u'  Sheet "{}" of XLS file "{}" has no row for TaxIPP names'.format(sheet_name,
+                                filename))
+                            taxipp_names_row = []
                     if state == 'labels':
                         first_cell_value = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, 0)
                         date_or_year, error = conv.pipe(
@@ -292,17 +317,12 @@ def main():
                         if error is not None:
                             # First cell of row is not a date => Assume it is a label.
                             labels_rows.append([
-                                label_stripped
-                                for label_stripped in (
-                                    label.strip()
-                                    for label in (
-                                        transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index,
-                                            column_index)
-                                        for column_index in range(columns_count)
-                                        )
-                                    if label is not None
+                                (label or u'').strip()
+                                for label in (
+                                    transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index,
+                                        column_index)
+                                    for column_index in range(columns_count)
                                     )
-                                if label_stripped
                                 ])
                             continue
                         state = 'values'
@@ -374,9 +394,17 @@ def main():
                         if not column_labels or column_labels[-1] != label:
                             column_labels.append(label)
                 labels = [
-                    tuple(column_labels1) if column_labels1 else (u'Colonne {} sans titre',)
+                    (tuple(
+                        label_stripped
+                        for label_stripped in (
+                            (label or u'').strip()
+                            for label in column_labels1
+                            )
+                        if label_stripped
+                        ) if column_labels1 else None) or (u'Colonne {} sans titre',)
                     for index, column_labels1 in enumerate(labels, 1)
                     ]
+                assert labels
 
                 taxipp_name_by_column_labels = UnsortableOrderedDict()
                 for column_labels, taxipp_name in zip(labels, taxipp_names_row):
@@ -409,25 +437,31 @@ def main():
                 if sheet_values:
                     sheet_node[u'Valeurs'] = sheet_values
 
-                notes_lines = [
-                    u' | '.join(
-                        cell for cell in row
-                        if cell
-                        ).rstrip()
-                    for row in notes_rows
-                    ]
-                if notes_lines:
-                    sheet_node[u'Notes'] = literal_unicode(u'\n'.join(notes_lines).rstrip())
+                notes = u'\n'.join([
+                    line.rstrip()
+                    for line in u'\n'.join([
+                        u' | '.join(
+                            cell for cell in row
+                            if cell
+                            ).rstrip()
+                        for row in notes_rows
+                        ]).split(u'\n')
+                    ]).rstrip()
+                if notes:
+                    sheet_node[u'Notes'] = literal_unicode(notes)
 
-                descriptions_lines = [
-                    u' | '.join(
-                        cell for cell in row
-                        if cell
-                        ).rstrip()
-                    for row in descriptions_rows
-                    ]
-                if descriptions_lines:
-                    sheet_node[u'Description'] = literal_unicode(u'\n'.join(descriptions_lines).rstrip())
+                description = u'\n'.join([
+                    line.rstrip()
+                    for line in u'\n'.join([
+                        u' | '.join(
+                            cell for cell in row
+                            if cell
+                            ).rstrip()
+                        for row in descriptions_rows
+                        ]).split(u'\n')
+                    ]).rstrip()
+                if description:
+                    sheet_node[u'Description'] = literal_unicode(description)
 
                 with open(os.path.join(book_yaml_dir, strings.slugify(sheet_name) + '.yaml'), 'w') as yaml_file:
                     yaml.dump(sheet_node, yaml_file, allow_unicode = True, default_flow_style = False, indent = 2,

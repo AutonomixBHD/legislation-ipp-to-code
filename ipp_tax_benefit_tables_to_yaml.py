@@ -204,6 +204,8 @@ def main():
                                 linked_sheet_title = transform_xls_cell_to_str(book, sheet, merged_cells_tree,
                                     row_index, column_index + 1)
                                 if linked_sheet_title is not None:
+                                    linked_sheet_title = linked_sheet_title.strip()
+                                if linked_sheet_title:
                                     hyperlink = get_hyperlink(sheet, row_index, column_index + 1)
                                     if hyperlink is not None and hyperlink.type == u'workbook':
                                         linked_sheet_name = hyperlink.textmark.split(u'!', 1)[0].strip(u'"').strip(u"'")
@@ -223,10 +225,10 @@ def main():
                     for column_index in range(8, 12):
                         for row_index in range(sheet.nrows):
                             note = transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
-                            if note == book_description:
+                            if note and note.strip() == book_description:
                                 continue
                             if book_notes or note:
-                                book_notes.append(note or u'')
+                                book_notes.append((note or u'').rstrip())
                                 if note:
                                     blank_notes_count = 0
                                 elif blank_notes_count >= 1:
@@ -267,11 +269,16 @@ def main():
                     columns_count = len(sheet.row_values(row_index))
                     if state == 'taxipp_names':
                         taxipp_names_row = [
-                            taxipp_name
-                            for taxipp_name in (
-                                transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
-                                for column_index in range(columns_count)
+                            taxipp_stripped
+                            for taxipp_stripped in (
+                                taxipp_name.strip()
+                                for taxipp_name in (
+                                    transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
+                                    for column_index in range(columns_count)
+                                    )
+                                if taxipp_name is not None
                                 )
+                            if taxipp_stripped
                             ]
                         state = 'labels'
                         continue
@@ -285,8 +292,17 @@ def main():
                         if error is not None:
                             # First cell of row is not a date => Assume it is a label.
                             labels_rows.append([
-                                transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
-                                for column_index in range(columns_count)
+                                label_stripped
+                                for label_stripped in (
+                                    label.strip()
+                                    for label in (
+                                        transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index,
+                                            column_index)
+                                        for column_index in range(columns_count)
+                                        )
+                                    if label is not None
+                                    )
+                                if label_stripped
                                 ])
                             continue
                         state = 'values'
@@ -297,8 +313,12 @@ def main():
                             if error is None:
                                 # First cell of row is a valid date or year.
                                 values_row = [
-                                    transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, column_index)
-                                    for column_index in range(columns_count)
+                                    value.strip() if isinstance(value, basestring) else value
+                                    for value in (
+                                        transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index,
+                                            column_index)
+                                        for column_index in range(columns_count)
+                                        )
                                     ]
                                 if date_or_year is not None:
                                     assert date_or_year.year < 2601, 'Invalid date {} in {} at row {}'.format(
@@ -315,15 +335,21 @@ def main():
                         first_cell_value = transform_xls_cell_to_json(book, sheet, merged_cells_tree, row_index, 0)
                         if isinstance(first_cell_value, basestring) and first_cell_value.strip().lower() == 'notes':
                             notes_rows.append([
-                                transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
-                                for column_index in range(columns_count)
+                                (line or u'').rstrip()
+                                for line in (
+                                    transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
+                                    for column_index in range(columns_count)
+                                    )
                                 ])
                             continue
                         state = 'description'
                     assert state == 'description'
                     descriptions_rows.append([
-                        transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
-                        for column_index in range(columns_count)
+                        (line or u'').strip()
+                        for line in (
+                            transform_xls_cell_to_str(book, sheet, merged_cells_tree, row_index, column_index)
+                            for column_index in range(columns_count)
+                            )
                         ])
 
                 sheet_node = UnsortableOrderedDict()
@@ -387,7 +413,7 @@ def main():
                     u' | '.join(
                         cell for cell in row
                         if cell
-                        )
+                        ).rstrip()
                     for row in notes_rows
                     ]
                 if notes_lines:
@@ -397,7 +423,7 @@ def main():
                     u' | '.join(
                         cell for cell in row
                         if cell
-                        )
+                        ).rstrip()
                     for row in descriptions_rows
                     ]
                 if descriptions_lines:
